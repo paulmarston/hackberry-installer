@@ -102,7 +102,23 @@ The target disk is **erased** and laid out as:
    `--help` lists the rest.
 5. When it prints **Done**, power off, take the SD card out and power on. The first boot reboots
    once by itself, to switch to the newest kernel the install fetched.
-6. Log in as the user in `.env`. Phosh is the default session.
+6. Log in with the user and password from the SD card (see [Your login](#your-login)). Phosh is
+   the default session.
+
+### Your login
+
+Unless you chose the password yourself, the installer generates it. It saves it in two places
+on the SD card you ran it from, and never prints it:
+
+| Where | How to read it |
+| --- | --- |
+| `.env` in the `hackberry-installer` folder (mode 600) | On the SD system: `cat ~/hackberry-installer/.env`. The user and password are `HACKBERRY_USER` and `HACKBERRY_PASSWORD`. |
+| `hackberry-login.txt` on the SD card's boot partition | Put the SD card in any computer. The boot partition (`bootfs` on Raspberry Pi OS) opens on macOS and Windows; open the file there. |
+
+**Delete `hackberry-login.txt` once you've logged in.** The boot partition is FAT, which has no
+file permissions, so anyone holding the card can read it. Keep `.env` if you might run the
+installer again: a second run for the same user reuses the password. To skip the boot-partition
+copy, use `--no-login-copy`. To change the password later, run `passwd` on the new system.
 
 ### After installing
 

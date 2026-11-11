@@ -56,13 +56,16 @@ Options:
   --driver-src DIR     the Hackberry driver source (default: vendor/hackberrypi-max17048 here)
   --env-file FILE      where the new user's password is kept (default: .env next to this script)
   --ask-password       type the password instead of having one generated
+  --no-login-copy      don't also write hackberry-login.txt to the SD card's FAT boot partition
   --dry-run            check everything and print the plan; change nothing
   -h, --help           --version
 
 The new user's password: one line on stdin if piped; else, for the same user, the one already
 in the .env file; else a new random one. It is saved in the .env file (mode 600, owned by you,
 never printed) as HACKBERRY_USER and HACKBERRY_PASSWORD, so you can log in to the new system,
-with the host name, disk and install time. Each run rewrites the whole file.
+with the host name, disk and install time. Each run rewrites the whole file. A copy goes to the
+SD card's FAT boot partition as hackberry-login.txt, readable on macOS and Windows: delete it
+once you have logged in (FAT has no permissions).
 
 Examples:
   sudo ./hackberry-ubuntu-phosh.sh --target nvme --wipe /dev/nvme0n1 --dry-run
@@ -81,7 +84,7 @@ die() { echo "hackberry-ubuntu-phosh: $*" >&2; exit 1; }
 need() { (($# >= 2)) && [[ -n $2 && $2 != --* ]] || die "$1 needs a value"; }
 say() { echo "==> $*"; }
 
-TARGET='' DEVICE='' WIPE='' USERNAME='' ENVFILE='' ASKPW=0 HOST=hackberry COUNTRY='' SSHKEY='' WIFI=1 SESSION=phosh
+TARGET='' DEVICE='' WIPE='' USERNAME='' ENVFILE='' ASKPW=0 LOGINCOPY=1 HOST=hackberry COUNTRY='' SSHKEY='' WIFI=1 SESSION=phosh
 ROOT_SIZE=32G HOME_SIZE=32G SWAP_SIZE=16G IMAGES='' DRV_SRC=$HERE/vendor/hackberrypi-max17048 DRY=0
 while (($#)); do
   case $1 in
@@ -101,6 +104,7 @@ while (($#)); do
     --driver-src) need "$@"; DRV_SRC=$2; shift ;;
     --env-file) need "$@"; ENVFILE=$2; shift ;;
     --ask-password) ASKPW=1 ;;
+    --no-login-copy) LOGINCOPY=0 ;;
     --dry-run) DRY=1 ;;
     -h|--help) usage; exit 0 ;;
     --version) echo "$VERSION"; exit 0 ;;
@@ -220,6 +224,22 @@ fi
   } >"$ENVFILE.new" && mv "$ENVFILE.new" "$ENVFILE" )
 [[ -n ${SUDO_USER:-} ]] && chown "$SUDO_USER:$(id -gn "$SUDO_USER")" "$ENVFILE"
 say "password for ${USERNAME}: ${PWSRC}, saved in ${ENVFILE}"
+# and a copy on the SD card's FAT boot partition, which macOS and Windows can read
+if ((LOGINCOPY)); then
+  fat=''
+  for m in /boot/firmware /boot; do
+    [[ $(findmnt -no FSTYPE "$m" 2>/dev/null) == vfat ]] && { fat=$m; break; }
+  done
+  if [[ -n $fat ]]; then
+    { printf '%s\r\n' "HackberryPi login for the system installed by hackberry-ubuntu-phosh on ${DEVICE} ($(date -u +%F))." \
+        "Delete this file once you have logged in: anyone with this SD card can read it." ""
+      grep -E '^HACKBERRY_(USER|PASSWORD|HOSTNAME)=' "$ENVFILE" | sed -e 's/^HACKBERRY_USER=/user:     /' \
+        -e 's/^HACKBERRY_PASSWORD=/password: /' -e 's/^HACKBERRY_HOSTNAME=/host:     /' -e 's/$/\r/'
+    } >"$fat/hackberry-login.txt" && sync && say "a copy for macOS and Windows: hackberry-login.txt on the SD card's boot partition"
+  else
+    say "no FAT boot partition mounted here; the login is only in ${ENVFILE}"
+  fi
+fi
 
 # --- tools on the running system --------------------------------------------------------------
 
